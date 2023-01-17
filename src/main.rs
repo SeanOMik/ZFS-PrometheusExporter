@@ -109,7 +109,7 @@ fn register_vdev_stats(vdev: &Vdev, vdev_device: &Device, vdev_name: String, sta
     vdev_device.io_stats.collect_metrics(&vdev_reg)?;
     register_error_stats(&vdev_reg, vdev.error_statistics().clone())?;
     
-    register_intcounter(&vdev_reg, "drive_count", "Total count of drives in this pool or vdev", vdev.disks().len() as u64)?;
+    register_intcounter(&vdev_reg, "disk_count", "Total count of drives in this pool or vdev", vdev.disks().len() as u64)?;
 
     Ok(vdev_reg)
 }
@@ -153,11 +153,11 @@ async fn metrics_endpoint() -> impl Responder {
         register_intcounter(&pool_reg, "spare_count", "The amount of spare drives", pool.spares().len() as u64).unwrap();
 
         // Calculate the total drive count and register it as a metric.
-        let total_drive_count = IntCounter::new("drive_count", "Total count of drives in this pool or vdev").unwrap();
+        let total_disk_count = IntCounter::new("disk_count", "Total count of drives in this pool or vdev").unwrap();
         for vdev in pool.vdevs().iter() {
-            total_drive_count.inc_by(vdev.disks().len() as u64);
+            total_disk_count.inc_by(vdev.disks().len() as u64);
         }
-        pool_reg.register(Box::new(total_drive_count)).unwrap();
+        pool_reg.register(Box::new(total_disk_count)).unwrap();
 
         // Register pool health
         registries.extend(register_health(labels.clone(), pool.health().clone()).unwrap());
@@ -195,7 +195,7 @@ async fn metrics_endpoint() -> impl Responder {
             // Get the raw size of the pool.
             let output = String::from_utf8(
                 Command::new("zpool")
-                    .args(["list", pool.name().as_str(), "-Hp"])
+                    .args(["list", "-Hp", pool.name().as_str()])
                     .output()
                     .expect(&format!("Failure to execute `zpool iostat {} -v 1 2`", pool.name()))
                 .stdout).expect(&format!("Failure to convert output of `zpool iostat {} -v 1 2` to utf8.", pool.name()));

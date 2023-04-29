@@ -15,6 +15,14 @@ Options:
   -V, --version                      Print version
 ```
 
+### Docker
+The docker image is a multi-stage build, so its pretty small. You can either build it yourself, or just pull it from GitHub container registry. The image does need to run as privileged so it can collect zfs pool metrics. I'm not sure if there's a way to get it to scrape host zfs pool info without it being privileged.
+
+```shell
+$ docker pull ghcr.io/seanomik/zfs_promexporter:latest
+$ docker run --rm -d --privileged -p 8080:8080 --name zfs_exporter ghcr.io/seanomik/zfs_promexporter:latest
+```
+
 ## What Metrics Are Exported?
 * `zfs_health` (`enum`): Represents the device's health, can be `online`, `degraded`, `faulted`, `offline`, `available`, `unavailable` and `removed`. The state is stored in the `state` label, and the value is `0` for not-in-state, and `1` for in-state.
 * `zfs_read_errors` (int counter): The amount of read errors for this device.

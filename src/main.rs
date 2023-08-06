@@ -3,7 +3,7 @@ use actix_web::middleware::Logger;
 
 use libzetta::zpool::{ZpoolOpen3, ZpoolEngine, Vdev, Health, vdev::ErrorStatistics, Reason};
 
-use prometheus::{Encoder, IntCounter, Registry};
+use prometheus::{Encoder, IntCounter, Registry, IntGauge};
 
 use clap::Parser;
 
@@ -20,10 +20,10 @@ fn encode_metrics(reg: &Registry) -> Result<String, FromUtf8Error> {
     String::from_utf8(buffer.clone())
 }
 
-fn register_intcounter(reg: &Registry, name: &str, help: &str, val: u64) -> prometheus::Result<()> {
-    let counter = IntCounter::new(name, help)?;
-    counter.inc_by(val);
-    reg.register(Box::new(counter))?;
+fn register_intguage(reg: &Registry, name: &str, help: &str, val: u64) -> prometheus::Result<()> {
+    let gauge = IntGauge::new(name, help)?;
+    gauge.set(val as i64);
+    reg.register(Box::new(gauge))?;
 
     Ok(())
 }
@@ -38,7 +38,7 @@ fn register_health(labels: HashMap<String, String>, health: Health) -> prometheu
         Health::Online => 1,
         _ => 0,
     };
-    register_intcounter(&online_reg, "health", "The health of the device. This is an enum.", online_val)?;
+    register_intguage(&online_reg, "health", "The health of the device. This is an enum.", online_val)?;
 
     labels.insert(String::from("state"), String::from("degraded"));
     let degraded_reg = Registry::new_custom(Some("zfs".to_string()), Some(labels.clone()))?;
@@ -46,7 +46,7 @@ fn register_health(labels: HashMap<String, String>, health: Health) -> prometheu
         Health::Degraded => 1,
         _ => 0,
     };
-    register_intcounter(&degraded_reg, "health", "The health of the device. This is an enum.", degraded_val)?;
+    register_intguage(&degraded_reg, "health", "The health of the device. This is an enum.", degraded_val)?;
 
     labels.insert(String::from("state"), String::from("faulted"));
     let faulted_reg = Registry::new_custom(Some("zfs".to_string()), Some(labels.clone()))?;
@@ -54,7 +54,7 @@ fn register_health(labels: HashMap<String, String>, health: Health) -> prometheu
         Health::Faulted => 1,
         _ => 0,
     };
-    register_intcounter(&faulted_reg, "health", "The health of the device. This is an enum.", faulted_val)?;
+    register_intguage(&faulted_reg, "health", "The health of the device. This is an enum.", faulted_val)?;
 
     labels.insert(String::from("state"), String::from("offline"));
     let offline_reg = Registry::new_custom(Some("zfs".to_string()), Some(labels.clone()))?;
@@ -62,7 +62,7 @@ fn register_health(labels: HashMap<String, String>, health: Health) -> prometheu
         Health::Offline => 1,
         _ => 0,
     };
-    register_intcounter(&offline_reg, "health", "The health of the device. This is an enum.", offline_val)?;
+    register_intguage(&offline_reg, "health", "The health of the device. This is an enum.", offline_val)?;
 
     labels.insert(String::from("state"), String::from("available"));
     let available_reg = Registry::new_custom(Some("zfs".to_string()), Some(labels.clone()))?;
@@ -70,7 +70,7 @@ fn register_health(labels: HashMap<String, String>, health: Health) -> prometheu
         Health::Available => 1,
         _ => 0,
     };
-    register_intcounter(&available_reg, "health", "The health of the device. This is an enum.", available_val)?;
+    register_intguage(&available_reg, "health", "The health of the device. This is an enum.", available_val)?;
 
     labels.insert(String::from("state"), String::from("unavailable"));
     let unavailable_reg = Registry::new_custom(Some("zfs".to_string()), Some(labels.clone()))?;
@@ -78,7 +78,7 @@ fn register_health(labels: HashMap<String, String>, health: Health) -> prometheu
         Health::Unavailable => 1,
         _ => 0,
     };
-    register_intcounter(&unavailable_reg, "health", "The health of the device. This is an enum.", unavailable_val)?;
+    register_intguage(&unavailable_reg, "health", "The health of the device. This is an enum.", unavailable_val)?;
 
     labels.insert(String::from("state"), String::from("removed"));
     let removed_reg = Registry::new_custom(Some("zfs".to_string()), Some(labels.clone()))?;
@@ -86,15 +86,15 @@ fn register_health(labels: HashMap<String, String>, health: Health) -> prometheu
         Health::Removed => 1,
         _ => 0,
     };
-    register_intcounter(&removed_reg, "health", "The health of the device. This is an enum.", removed_val)?;
+    register_intguage(&removed_reg, "health", "The health of the device. This is an enum.", removed_val)?;
 
     Ok(vec![online_reg, degraded_reg, faulted_reg, offline_reg, available_reg, unavailable_reg, removed_reg])
 }
 
 fn register_error_stats(reg: &Registry, error_stats: ErrorStatistics) -> prometheus::Result<()> {
-    register_intcounter(reg, "read_errors", "The amount of I/O errors that occurred during reading", error_stats.read)?;
-    register_intcounter(reg, "write_errors", "The amount of I/O errors that occurred during writing", error_stats.write)?;
-    register_intcounter(reg, "checksum_errors", "The amount of checksum errors, meaning the device returned corrupted data from a read request", error_stats.checksum)?;
+    register_intguage(reg, "read_errors", "The amount of I/O errors that occurred during reading", error_stats.read)?;
+    register_intguage(reg, "write_errors", "The amount of I/O errors that occurred during writing", error_stats.write)?;
+    register_intguage(reg, "checksum_errors", "The amount of checksum errors, meaning the device returned corrupted data from a read request", error_stats.checksum)?;
 
     Ok(())
 }
@@ -109,7 +109,7 @@ fn register_vdev_stats(vdev: &Vdev, vdev_device: &Device, vdev_name: String, sta
     vdev_device.io_stats.collect_metrics(&vdev_reg)?;
     register_error_stats(&vdev_reg, vdev.error_statistics().clone())?;
     
-    register_intcounter(&vdev_reg, "disk_count", "Total count of drives in this pool or vdev", vdev.disks().len() as u64)?;
+    register_intguage(&vdev_reg, "disk_count", "Total count of drives in this pool or vdev", vdev.disks().len() as u64)?;
 
     Ok(vdev_reg)
 }
@@ -149,8 +149,8 @@ async fn metrics_endpoint() -> impl Responder {
         // Create a registry for general pool metrics
         let pool_reg = Registry::new_custom(Some("zfs".to_string()), Some(labels.clone())).unwrap();
 
-        register_intcounter(&pool_reg, "vdev_count", "Count of vdevs in this pool", pool.vdevs().len() as u64).unwrap();
-        register_intcounter(&pool_reg, "spare_count", "The amount of spare drives", pool.spares().len() as u64).unwrap();
+        register_intguage(&pool_reg, "vdev_count", "Count of vdevs in this pool", pool.vdevs().len() as u64).unwrap();
+        register_intguage(&pool_reg, "spare_count", "The amount of spare drives", pool.spares().len() as u64).unwrap();
 
         // Calculate the total drive count and register it as a metric.
         let total_disk_count = IntCounter::new("disk_count", "Total count of drives in this pool or vdev").unwrap();
@@ -208,7 +208,7 @@ async fn metrics_endpoint() -> impl Responder {
                 // make sure this line is actually a pool
                 if cols.len() == 11 {
                     let size: u64 = cols[1].parse().unwrap();
-                    register_intcounter(&pool_reg, "raw_size", "The raw size of this device (this is not the usable space)", size).unwrap();
+                    register_intguage(&pool_reg, "raw_size", "The raw size of this device (this is not the usable space)", size).unwrap();
 
                     let frag = cols[6].parse::<u64>().unwrap();
                     pool_dev.io_stats.frag = Some(frag);
@@ -331,15 +331,15 @@ impl IoStats {
     fn collect_metrics(&self, reg: &Registry) -> prometheus::Result<()> {
         // These will always be Some at the same time, no mix match
         if let (Some(capacity), Some(available), Some(frag)) = (self.capacity, self.available, self.frag) {
-            register_intcounter(&reg, "capacity", "The capacity of the device in bytes", capacity)?;
-            register_intcounter(&reg, "available", "The available bytes in the device", available)?;
-            register_intcounter(&reg, "fragmentation", "The percentage (0-100) of fragmentation of the device", frag)?;
+            register_intguage(&reg, "capacity", "The capacity of the device in bytes", capacity)?;
+            register_intguage(&reg, "available", "The available bytes in the device", available)?;
+            register_intguage(&reg, "fragmentation", "The percentage (0-100) of fragmentation of the device", frag)?;
         }
 
-        register_intcounter(&reg, "read_operations", "The read operations for this device per second", self.read_op)?;
-        register_intcounter(&reg, "write_operations", "The write operations for this device per second", self.write_op)?;
-        register_intcounter(&reg, "read_bandwidth", "The read bandwidth for this device in bytes per second", self.read_band)?;
-        register_intcounter(&reg, "write_bandwidth", "The write bandwidth for this device in bytes per second", self.write_band)?;
+        register_intguage(&reg, "read_operations", "The read operations for this device per second", self.read_op)?;
+        register_intguage(&reg, "write_operations", "The write operations for this device per second", self.write_op)?;
+        register_intguage(&reg, "read_bandwidth", "The read bandwidth for this device in bytes per second", self.read_band)?;
+        register_intguage(&reg, "write_bandwidth", "The write bandwidth for this device in bytes per second", self.write_band)?;
 
         Ok(())
     }

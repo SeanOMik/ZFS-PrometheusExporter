@@ -25,23 +25,28 @@ $ docker run --rm -d --privileged -p 8080:8080 --name zfs_exporter ghcr.io/seano
 
 ## What Metrics Are Exported?
 * `zfs_health` (`enum`): Represents the device's health, can be `online`, `degraded`, `faulted`, `offline`, `available`, `unavailable` and `removed`. The state is stored in the `state` label, and the value is `0` for not-in-state, and `1` for in-state.
-* `zfs_read_errors` (int counter): The amount of read errors for this device.
-* `zfs_write_errors` (int counter): The amount of write errors for this device.
-* `zfs_checksum_errors` (int counter): The amount of checksum errors for this device.
-* `zfs_disk_count` (int counter): The amount of disks in this pool or vdev.
-* `zfs_vdev_count` (int counter): The amount of vdevs in the pool.
-* `zfs_spare_count` (int counter): The spare amount in the pool.
-* `zfs_raw_size` (int counter): The raw size (in bytes) of the device. This is not the actual capacity.
-* `zfs_capacity` (int counter): The capacity (in bytes) of the device.
-* `zfs_available` (int counter): The available bytes of the device.
-* `zfs_read_operations` (int counter): The amount of read operations on this device.
-* `zfs_write_operations` (int counter): The amount of write operations on this device.
-* `zfs_read_bandwidth` (int counter): The read bandwidth for this device in bytes per second.
-* `zfs_write_bandwidth` (int counter): The write bandwidth for this device in bytes per second.
+* `zfs_read_errors` (int gauge): The amount of read errors for this device.
+* `zfs_write_errors` (int gauge): The amount of write errors for this device.
+* `zfs_checksum_errors` (int gauge): The amount of checksum errors for this device.
+* `zfs_disk_count` (int gauge): The amount of disks in this pool or vdev.
+* `zfs_vdev_count` (int gauge): The amount of vdevs in the pool.
+* `zfs_spare_count` (int gauge): The spare amount in the pool.
+* `zfs_raw_size` (int gauge): The raw size (in bytes) of the device. This is not the actual capacity.
+* `zfs_capacity` (int gauge): The capacity (in bytes) of the device.
+* `zfs_available` (int gauge): The available bytes of the device.
+* `zfs_read_operations` (int gauge): The amount of read operations on this device.
+* `zfs_write_operations` (int gauge): The amount of write operations on this device.
+* `zfs_read_bandwidth` (int gauge): The read bandwidth for this device in bytes per second.
+* `zfs_write_bandwidth` (int gauge): The write bandwidth for this device in bytes per second.
+* `zfs_fragmentation` (int gauge): The percentage (0-100) of fragmentation of the device.
 
-**Note: the `zpool status` commands use 1024, not 1000.**
+**Note: Sizes output from `zpool status` are in TiB/GiB (1024), not TB/GB (1000).**
 
 There are some common labels for the metrics:
 * `device_name`: The name of the device that this metric is related to.
 * `device_type`: The type of the device. Can be `pool`, `vdev` or `disk`.
 * `pool`: The ZFS pool that this device (`vdev` or `disk`) is a part of.
+
+## Grafana Dashboard
+Import from json: [dashboard.json](./dashboard.json)
+![dashboard screenshot](assets/dashboard.png)

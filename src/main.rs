@@ -186,26 +186,55 @@ async fn metrics_endpoint() -> impl Responder {
         let output = String::from_utf8(output.stdout)
             .expect(&format!("Failure to convert output of `zpool iostat` to utf8."));
 
-        let devices = Device::parse_from_stdout(output);
+        let mut devices = Device::parse_from_stdout(output);
 
         // Get the pool from the devices and collect the io stats
-        if let Some(pool_dev) = devices.iter().find(|dev| dev.name == pool.name().clone()) {
-            pool_dev.io_stats.collect_metrics(&pool_reg).unwrap();
-
+        if let Some(pool_dev) = devices.iter_mut().find(|dev| dev.name == pool.name().clone()) {
             // Get the raw size of the pool.
             let output = String::from_utf8(
                 Command::new("zpool")
-                    .args(["list", "-Hp", pool.name().as_str()])
+                    .args(["list", "-Hpv", pool.name().as_str()])
                     .output()
                     .expect(&format!("Failure to execute `zpool iostat {} -v 1 2`", pool.name()))
                 .stdout).expect(&format!("Failure to convert output of `zpool iostat {} -v 1 2` to utf8.", pool.name()));
 
             // Extract the size from the output
-            let cols: Vec<&str> = output.split("\t").collect();
-            if cols.len() == 11 {
-                let size: u64 = cols[1].parse().unwrap();
-                register_intcounter(&pool_reg, "raw_size", "The raw size of this device (this is not the usable space)", size).unwrap();
+
+            let mut lines = output.split("\n");
+            {
+                let line = lines.next().unwrap();
+                let cols: Vec<&str> = line.split("\t").collect();
+
+                // make sure this line is actually a pool
+                if cols.len() == 11 {
+                    let size: u64 = cols[1].parse().unwrap();
+                    register_intcounter(&pool_reg, "raw_size", "The raw size of this device (this is not the usable space)", size).unwrap();
+
+                    let frag = cols[6].parse::<u64>().unwrap();
+                    pool_dev.io_stats.frag = Some(frag);
+                } else {
+                    panic!("Failure to parse pool")
+                }
             }
+
+            for line in lines {
+                let cols: Vec<&str> = line.split("\t").collect();
+
+                // Check if this line is correct
+                if cols.len() == 10 {
+                    let name = cols[0];
+
+                    if let Some(device) = devices.iter_mut()
+                            .find(|dev| dev.name == name && dev.is_pool_or_vdev()) {
+                        let frag = cols[6].parse::<u64>().unwrap();
+                        device.io_stats.frag = Some(frag);
+                    }
+                }
+            }
+
+            // Collect pool io stats into registry
+            let pool_dev = devices.iter_mut().find(|dev| dev.name == pool.name().clone()).unwrap();
+            pool_dev.io_stats.collect_metrics(&pool_reg).unwrap();
         }
 
         // Push pool metrics
@@ -277,6 +306,7 @@ async fn metrics_endpoint() -> impl Responder {
 struct IoStats {
     capacity: Option<u64>,
     available: Option<u64>,
+    frag: Option<u64>,
 
     read_op: u64,
     write_op: u64,
@@ -286,10 +316,11 @@ struct IoStats {
 }
 
 impl IoStats {
-    fn new(capacity: Option<u64>, available: Option<u64>, read_op: u64, write_op: u64, read_band: u64, write_band: u64) -> Self {
+    fn new(capacity: Option<u64>, available: Option<u64>, frag: Option<u64>, read_op: u64, write_op: u64, read_band: u64, write_band: u64) -> Self {
         Self {
             capacity,
             available,
+            frag,
             read_op,
             write_op,
             read_band,
@@ -298,9 +329,11 @@ impl IoStats {
     }
 
     fn collect_metrics(&self, reg: &Registry) -> prometheus::Result<()> {
-        if let (Some(capacity), Some(available)) = (self.capacity, self.available) {
+        // These will always be Some at the same time, no mix match
+        if let (Some(capacity), Some(available), Some(frag)) = (self.capacity, self.available, self.frag) {
             register_intcounter(&reg, "capacity", "The capacity of the device in bytes", capacity)?;
             register_intcounter(&reg, "available", "The available bytes in the device", available)?;
+            register_intcounter(&reg, "fragmentation", "The percentage (0-100) of fragmentation of the device", frag)?;
         }
 
         register_intcounter(&reg, "read_operations", "The read operations for this device per second", self.read_op)?;
@@ -362,7 +395,7 @@ impl Device {
             };
 
             parsed.push(Device::new(String::from(name), 
-                IoStats::new(alloc, free, read_op, write_op, read_band, write_band)));
+                IoStats::new(alloc, free, None, read_op, write_op, read_band, write_band)));
         }
 
         return parsed;
